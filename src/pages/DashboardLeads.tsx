@@ -10,8 +10,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Search, Eye, Trash2, Plus, Phone, Mail } from "lucide-react";
+import { Search, Eye, Trash2, Plus, Phone, Mail, Upload, FileSpreadsheet } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useRef } from "react";
 
 const STATUSES = ["new", "contacted", "quoted", "won", "lost"] as const;
 const STATUS_COLORS: Record<string, string> = {
@@ -29,6 +30,8 @@ export default function DashboardLeads() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: leads = [], isLoading } = useQuery<Lead[]>({
     queryKey: ["leads"],
@@ -73,6 +76,119 @@ export default function DashboardLeads() {
     },
   });
 
+  const handleCSVUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    try {
+      const text = await file.text();
+      const lines = text.split(/\r?\n/).filter(line => line.trim());
+      if (lines.length < 2) {
+        toast({ title: "Empty or invalid CSV", variant: "destructive" });
+        return;
+      }
+
+      // Parse header
+      const headers = lines[0].split(",").map(h => h.trim().toLowerCase().replace(/[^a-z_]/g, ""));
+      
+      // Map common header variations
+      const headerMap: Record<string, string> = {
+        name: "full_name",
+        fullname: "full_name",
+        full_name: "full_name",
+        email: "email",
+        emailaddress: "email",
+        phone: "phone",
+        phonenumber: "phone",
+        telephone: "phone",
+        city: "city_state",
+        citystate: "city_state",
+        city_state: "city_state",
+        location: "city_state",
+        project: "project_type",
+        projecttype: "project_type",
+        project_type: "project_type",
+        type: "project_type",
+        timeline: "timeline",
+        glasssize: "glass_size",
+        glass_size: "glass_size",
+        size: "glass_size",
+        message: "message",
+        notes: "message",
+        comment: "message",
+        status: "status",
+        source: "source",
+      };
+
+      const mappedHeaders = headers.map(h => headerMap[h] || h);
+      const leadsToInsert: Partial<Lead>[] = [];
+
+      for (let i = 1; i < lines.length; i++) {
+        const values = parseCSVLine(lines[i]);
+        const lead: Record<string, string> = {};
+        
+        mappedHeaders.forEach((header, idx) => {
+          if (values[idx]?.trim()) {
+            lead[header] = values[idx].trim();
+          }
+        });
+
+        if (lead.full_name) {
+          leadsToInsert.push({
+            full_name: lead.full_name,
+            email: lead.email || null,
+            phone: lead.phone || null,
+            city_state: lead.city_state || null,
+            project_type: lead.project_type || null,
+            timeline: lead.timeline || null,
+            glass_size: lead.glass_size || null,
+            message: lead.message || null,
+            status: (["new", "contacted", "quoted", "won", "lost"].includes(lead.status) ? lead.status : "new") as Lead["status"],
+            source: "google_sheet",
+          });
+        }
+      }
+
+      if (leadsToInsert.length === 0) {
+        toast({ title: "No valid leads found in CSV", variant: "destructive" });
+        return;
+      }
+
+      const { error } = await supabase.from("leads").insert(leadsToInsert);
+      if (error) throw error;
+
+      qc.invalidateQueries({ queryKey: ["leads"] });
+      toast({ title: `Imported ${leadsToInsert.length} leads` });
+    } catch (err) {
+      console.error(err);
+      toast({ title: "Failed to import CSV", variant: "destructive" });
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  // Parse CSV line handling quoted values
+  const parseCSVLine = (line: string): string[] => {
+    const result: string[] = [];
+    let current = "";
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+      if (char === '"') {
+        inQuotes = !inQuotes;
+      } else if (char === "," && !inQuotes) {
+        result.push(current);
+        current = "";
+      } else {
+        current += char;
+      }
+    }
+    result.push(current);
+    return result;
+  };
+
   const filtered = leads.filter((l) => {
     const matchSearch =
       !search ||
@@ -98,6 +214,16 @@ export default function DashboardLeads() {
             {STATUSES.map((s) => <SelectItem key={s} value={s} className="capitalize">{s}</SelectItem>)}
           </SelectContent>
         </Select>
+        <input
+          type="file"
+          accept=".csv"
+          ref={fileInputRef}
+          onChange={handleCSVUpload}
+          className="hidden"
+        />
+        <Button variant="outline" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
+          <Upload className="h-4 w-4 mr-1" />{uploading ? "Importing…" : "Import CSV"}
+        </Button>
         <Dialog open={addOpen} onOpenChange={setAddOpen}>
           <DialogTrigger asChild>
             <Button><Plus className="h-4 w-4 mr-1" />Add Lead</Button>
@@ -108,6 +234,14 @@ export default function DashboardLeads() {
           </DialogContent>
         </Dialog>
       </div>
+
+      {/* CSV Format Hint */}
+      <Card className="bg-slate-50 border-dashed">
+        <CardContent className="py-3 px-4 flex items-center gap-3 text-sm text-slate-600">
+          <FileSpreadsheet className="h-5 w-5 text-slate-400" />
+          <span>CSV columns: <code className="bg-slate-200 px-1 rounded text-xs">name, email, phone, city, project_type, timeline, glass_size, message, status</code></span>
+        </CardContent>
+      </Card>
 
       {/* Table */}
       <Card>
