@@ -43,7 +43,7 @@ export default function DashboardLayout() {
       <aside className={`fixed lg:static inset-y-0 left-0 z-50 w-64 bg-slate-900 text-white flex flex-col transition-transform lg:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
         <div className="flex items-center justify-between p-4 border-b border-slate-700">
           <Link href="/" className="flex items-center gap-2">
-            <img src="/assets/smartcorp-logo.png" alt="SmartCorp" className="h-8" />
+            <img src="/assets/sctlogo_1765682792645.png" alt="SmartCorp" className="h-8" />
             <span className="font-heading font-bold text-sm">CRM</span>
           </Link>
           <button onClick={() => setSidebarOpen(false)} className="lg:hidden text-slate-400 hover:text-white">
