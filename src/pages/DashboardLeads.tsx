@@ -137,13 +137,13 @@ export default function DashboardLeads() {
         if (lead.full_name) {
           leadsToInsert.push({
             full_name: lead.full_name,
-            email: lead.email || null,
-            phone: lead.phone || null,
-            city_state: lead.city_state || null,
-            project_type: lead.project_type || null,
-            timeline: lead.timeline || null,
-            glass_size: lead.glass_size || null,
-            message: lead.message || null,
+            email: lead.email || undefined,
+            phone: lead.phone || undefined,
+            city_state: lead.city_state || undefined,
+            project_type: lead.project_type || undefined,
+            timeline: lead.timeline || undefined,
+            glass_size: lead.glass_size || undefined,
+            message: lead.message || undefined,
             status: (["new", "contacted", "quoted", "won", "lost"].includes(lead.status) ? lead.status : "new") as Lead["status"],
             source: "google_sheet",
           });
