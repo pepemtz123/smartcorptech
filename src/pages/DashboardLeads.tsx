@@ -92,8 +92,9 @@ export default function DashboardLeads() {
       // Parse header
       const headers = lines[0].split(",").map(h => h.trim().toLowerCase().replace(/[^a-z_]/g, ""));
       
-      // Map common header variations
+      // Map common header variations (supports multiple CSV formats)
       const headerMap: Record<string, string> = {
+        // Standard columns
         name: "full_name",
         fullname: "full_name",
         full_name: "full_name",
@@ -102,10 +103,11 @@ export default function DashboardLeads() {
         phone: "phone",
         phonenumber: "phone",
         telephone: "phone",
-        city: "city_state",
+        city: "city",
         citystate: "city_state",
         city_state: "city_state",
         location: "city_state",
+        state: "state",
         project: "project_type",
         projecttype: "project_type",
         project_type: "project_type",
@@ -119,6 +121,18 @@ export default function DashboardLeads() {
         comment: "message",
         status: "status",
         source: "source",
+        // Extended columns for n8n/CRM CSV format
+        companyname: "full_name",
+        company: "full_name",
+        decisionmaker: "contact_name",
+        title: "title",
+        contactpath: "phone",
+        website: "website",
+        segment: "project_type",
+        list: "segment",
+        whysmartfilmusecase: "message",
+        whynow: "why_now",
+        researchsummary: "research",
       };
 
       const mappedHeaders = headers.map(h => headerMap[h] || h);
@@ -134,16 +148,35 @@ export default function DashboardLeads() {
           }
         });
 
-        if (lead.full_name) {
+        // Combine city + state if separate
+        if (lead.city && lead.state && !lead.city_state) {
+          lead.city_state = `${lead.city}, ${lead.state}`;
+        } else if (lead.city && !lead.city_state) {
+          lead.city_state = lead.city;
+        }
+
+        // Build message from multiple fields if needed
+        const messageParts: string[] = [];
+        if (lead.message) messageParts.push(lead.message);
+        if (lead.why_now) messageParts.push(`Why Now: ${lead.why_now}`);
+        if (lead.research) messageParts.push(`Research: ${lead.research}`);
+        if (lead.contact_name) messageParts.push(`Contact: ${lead.contact_name}${lead.title ? ` (${lead.title})` : ""}`);
+        if (lead.website) messageParts.push(`Website: ${lead.website}`);
+        const combinedMessage = messageParts.join("\n\n");
+
+        // Use company name or decision maker as the lead name
+        const leadName = lead.full_name || lead.contact_name || "";
+
+        if (leadName) {
           leadsToInsert.push({
-            full_name: lead.full_name,
+            full_name: leadName,
             email: lead.email || undefined,
             phone: lead.phone || undefined,
             city_state: lead.city_state || undefined,
-            project_type: lead.project_type || undefined,
+            project_type: lead.project_type || lead.segment || undefined,
             timeline: lead.timeline || undefined,
             glass_size: lead.glass_size || undefined,
-            message: lead.message || undefined,
+            message: combinedMessage || undefined,
             status: (["new", "contacted", "quoted", "won", "lost"].includes(lead.status) ? lead.status : "new") as Lead["status"],
             source: "google_sheet",
           });
